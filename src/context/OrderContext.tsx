@@ -24,6 +24,12 @@ export interface Order {
     paperCost: number;
     inkCost: number;
   };
+  vendor?: {
+    name: string;
+    cost: number;
+    status: "pending" | "sent" | "ready";
+  };
+  fileUrl?: string; // For previewing
   createdAt: string;
 }
 
@@ -41,6 +47,7 @@ interface OrderContextType {
   updateOrderStatus: (id: string, status: Order["status"]) => void;
   updatePaymentStatus: (id: string, status: Order["paymentStatus"]) => void;
   updateInventory: (inventory: Partial<Inventory>) => void;
+  assignVendor: (id: string, vendor: Order["vendor"]) => void;
   clearOrders: () => void;
 }
 
@@ -125,6 +132,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setInventory(prev => ({ ...prev, ...newInventory }));
   };
 
+  const assignVendor = (id: string, vendor: Order["vendor"]) => {
+    setOrders((prev) =>
+      prev.map((order) => (order.id === id ? { ...order, vendor } : order))
+    );
+  };
+
   const clearOrders = () => {
     setOrders([]);
     localStorage.removeItem("tuel_orders");
@@ -138,6 +151,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       updateOrderStatus, 
       updatePaymentStatus,
       updateInventory,
+      assignVendor,
       clearOrders 
     }}>
       {children}

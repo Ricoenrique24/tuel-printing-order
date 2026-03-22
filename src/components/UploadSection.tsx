@@ -57,16 +57,16 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative premium-card border-2 border-dashed border-primary/30 p-12 text-center transition-all ${
-          isDragging ? "bg-primary/10 border-primary scale-[1.02]" : ""
+        className={`relative premium-card border-2 border-dashed border-primary/30 p-12 text-center transition-all duration-500 hover:border-primary/60 hover:shadow-primary/10 ${
+          isDragging ? "bg-primary/10 border-primary scale-[1.02] shadow-2xl shadow-primary/20" : ""
         }`}
       >
         <div className="space-y-4 pointer-events-none relative z-10">
           <div className="flex justify-center">
-            <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center text-primary">
+            <div className={`w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center text-primary transition-transform duration-500 ${isDragging ? 'scale-110 animate-pulse-glow' : 'animate-float'}`}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-8 w-8"
+                className="h-10 w-10"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -81,11 +81,11 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
             </div>
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-bold">
+            <h3 className="text-2xl font-black tracking-tight">
               {isAnalyzing ? "Analyzing Document..." : selectedFile ? selectedFile.name : "Upload Your Document"}
             </h3>
             <div className="flex flex-col items-center">
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground font-medium">
                 {isAnalyzing 
                   ? "Checking colors and page counts..."
                   : selectedFile
@@ -93,7 +93,7 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
                     : "Drag and drop your PDF/Docx here"}
               </p>
               {!selectedFile && !isAnalyzing && (
-                <p className="text-primary text-xs font-bold mt-2 uppercase tracking-widest">or click to browse</p>
+                <p className="text-primary text-xs font-black mt-3 uppercase tracking-widest px-4 py-1.5 rounded-full bg-primary/10 inline-block">or click to browse</p>
               )}
             </div>
           </div>

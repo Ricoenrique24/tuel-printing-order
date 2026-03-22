@@ -68,6 +68,7 @@ const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onRe
       pageCount,
       options,
       totalPrice,
+      fileUrl: URL.createObjectURL(file), // Temporary URL for this session
     });
 
     setIsSubmitting(false);
