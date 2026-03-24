@@ -2,15 +2,56 @@
 
 import React, { useState } from "react";
 import { useOrders, Order } from "@/context/OrderContext";
+import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import PDFViewer from "@/components/PDFViewer";
 
 export default function AdminDashboard() {
-  const { orders, inventory, updateOrderStatus, updatePaymentStatus, updateInventory, assignVendor, clearOrders } = useOrders();
+  const { user, loading: authLoading, loginWithGoogle, logout: firebaseLogout } = useAuth();
+  const { orders, inventory, loading: ordersLoading, updateOrderStatus, updatePaymentStatus, updateInventory, assignVendor, clearOrders } = useOrders();
   const [filter, setFilter] = useState<Order["status"] | "all">("all");
-  const [activeTab, setActiveTab] = useState<"orders" | "inventory" | "vendors">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "inventory" | "vendors" | "pricing">("orders");
   const [selectedOrderForPreview, setSelectedOrderForPreview] = useState<Order | null>(null);
   const [vendorForm, setVendorForm] = useState<{ orderId: string; name: string; cost: number } | null>(null);
+
+  if (authLoading || ordersLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-black uppercase tracking-widest text-primary animate-pulse">Syncing with Firestore...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="max-w-md w-full space-y-8 text-center animate-in fade-in slide-in-from-bottom-8 duration-700">
+          <div className="flex justify-center">
+            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center font-black text-3xl shadow-xl shadow-primary/20">T</div>
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-4xl font-black tracking-tight">Admin Access</h1>
+            <p className="text-muted-foreground font-medium">Please sign in to manage the store queue and orders.</p>
+          </div>
+          <button 
+            onClick={loginWithGoogle}
+            className="w-full bg-foreground text-background py-4 rounded-xl font-black text-lg hover:bg-foreground/90 transition-all flex items-center justify-center space-x-3 shadow-2xl shadow-foreground/10"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+            <span>Sign in with Google</span>
+          </button>
+          <div className="pt-4">
+            <Link href="/" className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors underline decoration-2 underline-offset-4">
+              Back to Store
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const filteredOrders = filter === "all" 
     ? orders 
@@ -49,16 +90,22 @@ export default function AdminDashboard() {
               <p className="text-muted-foreground text-sm font-medium">ERP & Document Management</p>
             </div>
           </div>
-          <div className="flex space-x-3">
-            <button 
-              onClick={() => { if(confirm("Clear all data?")) { clearOrders(); localStorage.clear(); window.location.reload(); }}}
-              className="px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-            >
-              Reset System
-            </button>
-            <Link href="/" className="btn-primary py-2 text-sm">
-              Back to Store
-            </Link>
+          <div className="flex items-center space-x-6">
+            <div className="hidden sm:flex flex-col items-end">
+              <p className="text-[10px] font-black uppercase text-primary tracking-widest">Authorized Session</p>
+              <p className="text-sm font-bold truncate max-w-[200px]">{user?.email}</p>
+            </div>
+            <div className="flex space-x-3">
+              <button 
+                onClick={firebaseLogout}
+                className="px-4 py-2 text-sm font-bold text-muted-foreground hover:bg-secondary rounded-lg transition-colors border border-border"
+              >
+                Logout
+              </button>
+              <Link href="/" className="btn-primary py-2 text-sm">
+                Back to Store
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -81,6 +128,12 @@ export default function AdminDashboard() {
             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "vendors" ? "bg-background shadow-sm text-primary" : "text-muted-foreground"}`}
           >
             Vendors
+          </button>
+          <button 
+            onClick={() => setActiveTab("pricing")}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "pricing" ? "bg-background shadow-sm text-primary" : "text-muted-foreground"}`}
+          >
+            Pricing
           </button>
         </div>
 
@@ -108,18 +161,30 @@ export default function AdminDashboard() {
             <div className="premium-card overflow-hidden">
               <div className="p-6 border-b border-border flex flex-col md:flex-row gap-4 justify-between items-center bg-background">
                 <h2 className="text-xl font-bold">Active Store Queue</h2>
-                <div className="flex bg-secondary p-1 rounded-lg text-[10px] font-black uppercase tracking-tight">
-                  {["all", "pending", "processing", "completed"].map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setFilter(f as any)}
-                      className={`px-4 py-2 rounded-md transition-all ${
-                        filter === f ? "bg-background shadow-sm text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      {f}
-                    </button>
-                  ))}
+                <div className="flex items-center space-x-4">
+                  <div className="flex bg-secondary p-1 rounded-lg text-[10px] font-black uppercase tracking-tight">
+                    {["all", "pending", "processing", "completed"].map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setFilter(f as any)}
+                        className={`px-4 py-2 rounded-md transition-all ${
+                          filter === f ? "bg-background shadow-sm text-primary" : "text-muted-foreground"
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                  <button 
+                    onClick={() => {
+                      if (confirm("Are you sure you want to clear ALL orders? This cannot be undone.")) {
+                        clearOrders();
+                      }
+                    }}
+                    className="px-4 py-2 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase tracking-tight border border-red-100 hover:bg-red-100 transition-colors"
+                  >
+                    Clear Queue
+                  </button>
                 </div>
               </div>
 
@@ -145,7 +210,7 @@ export default function AdminDashboard() {
                       filteredOrders.map((order) => (
                         <tr key={order.id} className="hover:bg-secondary/10 transition-colors group">
                           <td className="px-6 py-4">
-                            <p className="font-black text-[10px] text-primary mb-1">{order.id}</p>
+                            <p className="font-black text-[10px] text-primary mb-1">{order.id.slice(0, 8)}</p>
                             <p className="font-bold text-sm">{order.customerName}</p>
                             <p className="text-xs text-muted-foreground">{order.whatsapp}</p>
                           </td>
@@ -292,7 +357,7 @@ export default function AdminDashboard() {
                   ) : (
                     orders.filter(o => o.vendor).map((order) => (
                       <tr key={order.id} className="hover:bg-secondary/10 transition-colors">
-                        <td className="px-6 py-4 font-black text-[10px] text-primary">{order.id}</td>
+                        <td className="px-6 py-4 font-black text-[10px] text-primary">{order.id.slice(0, 8)}</td>
                         <td className="px-6 py-4 font-bold text-sm">{order.vendor?.name}</td>
                         <td className="px-6 py-4 font-black text-sm italic">Rp {order.vendor?.cost.toLocaleString()}</td>
                         <td className="px-6 py-4">
@@ -305,6 +370,96 @@ export default function AdminDashboard() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "pricing" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Standard Pricing */}
+            <div className="premium-card p-8">
+              <h3 className="text-xl font-bold mb-6">Standard Pricing (Page)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold uppercase text-muted-foreground block mb-2">Color Rate (Rp)</label>
+                  <input 
+                    type="number" value={inventory.priceColor}
+                    onChange={(e) => updateInventory({ priceColor: Number(e.target.value) })}
+                    className="w-full bg-secondary border-none p-4 rounded-xl font-black text-lg focus:ring-2 ring-primary transition-all"
+                  />
+                  <p className="text-[10px] mt-2 text-muted-foreground italic">Target: Rp 1,000</p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase text-muted-foreground block mb-2">B&W Rate (Rp)</label>
+                  <input 
+                    type="number" value={inventory.priceBw}
+                    onChange={(e) => updateInventory({ priceBw: Number(e.target.value) })}
+                    className="w-full bg-secondary border-none p-4 rounded-xl font-black text-lg focus:ring-2 ring-primary transition-all"
+                  />
+                  <p className="text-[10px] mt-2 text-muted-foreground italic">Target: Rp 500</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bulk Discount Rules */}
+            <div className="premium-card p-8 border-l-4 border-l-primary">
+              <div className="flex justify-between items-start mb-6">
+                <h3 className="text-xl font-bold">Bulk Discount System</h3>
+                <span className="bg-primary/20 text-primary px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter">Automatic</span>
+              </div>
+              <div className="space-y-6">
+                <div>
+                  <label className="text-xs font-bold uppercase text-muted-foreground block mb-2">Threshold (Total Pages)</label>
+                  <input 
+                    type="number" value={inventory.bulkThreshold}
+                    onChange={(e) => updateInventory({ bulkThreshold: Number(e.target.value) })}
+                    className="w-full bg-secondary border-none p-4 rounded-xl font-black text-lg focus:ring-2 ring-primary transition-all"
+                  />
+                  <p className="text-[10px] mt-2 text-muted-foreground">Apply discount if total pages ≥ this value</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold uppercase text-muted-foreground block mb-2">Bulk Color (Rp)</label>
+                    <input 
+                      type="number" value={inventory.bulkPriceColor}
+                      onChange={(e) => updateInventory({ bulkPriceColor: Number(e.target.value) })}
+                      className="w-full bg-secondary border-none p-4 rounded-xl font-black text-lg focus:ring-2 ring-primary transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase text-muted-foreground block mb-2">Bulk B&W (Rp)</label>
+                    <input 
+                      type="number" value={inventory.bulkPriceBw}
+                      onChange={(e) => updateInventory({ bulkPriceBw: Number(e.target.value) })}
+                      className="w-full bg-secondary border-none p-4 rounded-xl font-black text-lg focus:ring-2 ring-primary transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Production Costs */}
+            <div className="premium-card p-8 col-span-1 md:col-span-2">
+              <h3 className="text-xl font-bold mb-6">Internal Unit Costs (Margin Calculation)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="text-xs font-bold uppercase text-muted-foreground block mb-2">Paper Cost per Sheet (Rp)</label>
+                  <input 
+                    type="number" value={inventory.paperCostPerSheet}
+                    onChange={(e) => updateInventory({ paperCostPerSheet: Number(e.target.value) })}
+                    className="w-full bg-secondary border-none p-4 rounded-xl font-bold text-sm focus:ring-2 ring-primary transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase text-muted-foreground block mb-2">Ink Cost per Page (Rp)</label>
+                  <input 
+                    type="number" value={inventory.inkCostPerPage}
+                    onChange={(e) => updateInventory({ inkCostPerPage: Number(e.target.value) })}
+                    className="w-full bg-secondary border-none p-4 rounded-xl font-bold text-sm focus:ring-2 ring-primary transition-all"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-4 italic font-medium">These values are used to calculate the "Net Profit" in your dashboard and are never shown to customers.</p>
             </div>
           </div>
         )}
@@ -348,30 +503,15 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* PDF Viewer Modal - Requires manual file handling as we can't store actual Files in LocalStorage */}
-      {selectedOrderForPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-background w-full max-w-lg rounded-2xl p-8 text-center space-y-4">
-            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mx-auto">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-black">Local Development Notice</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              In this local environment, actual document binary data is not persisted to LocalStorage for performance. 
-              Real PDF previews will be enabled once we integrate with **Firebase Storage** in Phase 4.
-            </p>
-            <button 
-              onClick={() => setSelectedOrderForPreview(null)}
-              className="btn-primary w-full"
-            >
-              Continue Development
-            </button>
-          </div>
-        </div>
-      )}
+      {/* PDF Viewer Modal */}
+      <PDFViewer 
+        url={selectedOrderForPreview?.fileUrl || null}
+        fileName={selectedOrderForPreview?.fileName}
+        isOpen={!!selectedOrderForPreview}
+        onClose={() => setSelectedOrderForPreview(null)}
+      />
     </div>
   );
 }
+
 

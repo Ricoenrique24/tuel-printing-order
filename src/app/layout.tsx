@@ -13,6 +13,8 @@ export const metadata: Metadata = {
   description: "Automate your printing business with AI-powered color analysis and real-time quoting.",
 };
 
+import { AuthProvider } from "@/context/AuthContext";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -23,9 +25,11 @@ export default function RootLayout({
       <body
         className={`${outfit.variable} font-sans antialiased bg-background text-foreground selection:bg-primary/30`}
       >
-        <OrderProvider>
-          {children}
-        </OrderProvider>
+        <AuthProvider>
+          <OrderProvider>
+            {children}
+          </OrderProvider>
+        </AuthProvider>
       </body>
     </html>
   );

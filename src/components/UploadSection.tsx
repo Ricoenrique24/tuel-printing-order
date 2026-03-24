@@ -12,6 +12,8 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -38,17 +40,40 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
     }
   }, []);
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!selectedFile) return;
     setIsAnalyzing(true);
     try {
-      const result = await analyzeDocumentMock(selectedFile);
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      // Use Cloud Run URL if configured (for production), otherwise use local proxy
+      const serviceUrl = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "/api/analyze";
+      const targetPath = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL ? "/analyze" : "";
+      
+      const response = await fetch(`${serviceUrl}${targetPath}`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Analysis failed. Please ensure the cloud server is running.");
+      }
+
+      const result = await response.json();
       onAnalysisComplete(result, selectedFile);
     } catch (error) {
       console.error("Analysis failed:", error);
+      alert("Analysis failed. Please check your internet connection.");
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const clearFile = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedFile(null);
   };
 
   return (
@@ -57,9 +82,10 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative premium-card border-2 border-dashed border-primary/30 p-12 text-center transition-all duration-500 hover:border-primary/60 hover:shadow-primary/10 ${
+        onClick={() => !isAnalyzing && !selectedFile && fileInputRef.current?.click()}
+        className={`relative premium-card border-2 border-dashed border-primary/30 p-12 text-center transition-all duration-500 hover:border-primary/60 hover:shadow-primary/10 cursor-pointer ${
           isDragging ? "bg-primary/10 border-primary scale-[1.02] shadow-2xl shadow-primary/20" : ""
-        }`}
+        } ${selectedFile ? "cursor-default" : ""}`}
       >
         <div className="space-y-4 pointer-events-none relative z-10">
           <div className="flex justify-center">
@@ -99,15 +125,14 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
           </div>
         </div>
 
-        {/* Input Layer */}
-        {!selectedFile && !isAnalyzing && (
-          <input
-            type="file"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-            onChange={handleFileChange}
-            accept=".pdf,.docx"
-          />
-        )}
+        {/* Hidden Input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileChange}
+          accept=".pdf,.docx"
+        />
 
         {/* Action Layer */}
         {selectedFile && !isAnalyzing && (
@@ -119,7 +144,7 @@ const UploadSection: React.FC<FileUploadProps> = ({ onAnalysisComplete }) => {
               Analyze Document
             </button>
             <button 
-              onClick={() => setSelectedFile(null)}
+              onClick={clearFile}
               className="text-xs font-bold text-muted-foreground hover:text-red-500 transition-colors"
             >
               Remove file

@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Orders: Anyone can create; Only admins can list, get, update, or delete
+    match /orders/{orderId} {
+      allow create: if true;
+      allow get, list, update, delete: if request.auth != null;
+    }
+    
+    // Inventory Config: Anyone can read (for pricing) and update (for stock deduction)
+    match /config/{document=**} {
+      allow read, update: if true;
+      allow create, delete: if request.auth != null;
+    }
+    
+    // Default Deny or Admin Only
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

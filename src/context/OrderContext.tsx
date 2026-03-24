@@ -1,6 +1,19 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useAuth } from "./AuthContext";
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  setDoc,
+  getDoc
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export interface Order {
   id: string;
@@ -29,7 +42,7 @@ export interface Order {
     cost: number;
     status: "pending" | "sent" | "ready";
   };
-  fileUrl?: string; // For previewing
+  fileUrl?: string; // Pointing to Firebase Storage
   createdAt: string;
 }
 
@@ -38,17 +51,24 @@ interface Inventory {
   inkStock: number;
   paperCostPerSheet: number;
   inkCostPerPage: number;
+  // Dynamic Pricing
+  priceBw: number;
+  priceColor: number;
+  bulkThreshold: number;
+  bulkPriceBw: number;
+  bulkPriceColor: number;
 }
 
 interface OrderContextType {
   orders: Order[];
   inventory: Inventory;
-  addOrder: (order: Omit<Order, "id" | "createdAt" | "status" | "paymentStatus" | "materials">) => void;
-  updateOrderStatus: (id: string, status: Order["status"]) => void;
-  updatePaymentStatus: (id: string, status: Order["paymentStatus"]) => void;
-  updateInventory: (inventory: Partial<Inventory>) => void;
-  assignVendor: (id: string, vendor: Order["vendor"]) => void;
-  clearOrders: () => void;
+  loading: boolean;
+  addOrder: (order: Omit<Order, "id" | "createdAt" | "status" | "paymentStatus" | "materials">) => Promise<string>;
+  updateOrderStatus: (id: string, status: Order["status"]) => Promise<void>;
+  updatePaymentStatus: (id: string, status: Order["paymentStatus"]) => Promise<void>;
+  updateInventory: (inventory: Partial<Inventory>) => Promise<void>;
+  assignVendor: (id: string, vendor: Order["vendor"]) => Promise<void>;
+  clearOrders: () => Promise<void>;
 }
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
@@ -60,93 +80,123 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     inkStock: 100,
     paperCostPerSheet: 200,
     inkCostPerPage: 100,
+    priceBw: 500,
+    priceColor: 1000,
+    bulkThreshold: 150,
+    bulkPriceBw: 350,
+    bulkPriceColor: 800,
   });
+  const [loading, setLoading] = useState(true);
 
-  // Load orders and inventory from localStorage on mount
+  const { user } = useAuth();
+
+  // Load orders and inventory from Firestore
   useEffect(() => {
-    const savedOrders = localStorage.getItem("tuel_orders");
-    const savedInventory = localStorage.getItem("tuel_inventory");
-    if (savedOrders) {
-      try {
-        setOrders(JSON.parse(savedOrders));
-      } catch (e) {
-        console.error("Failed to parse orders", e);
-      }
+    let unsubscribeOrders: () => void = () => {};
+
+    // 1. Listen to Orders only if authenticated (Admin)
+    if (user) {
+      const ordersQuery = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+      unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
+        const ordersData = snapshot.docs.map(doc => ({
+          ...doc.data(),
+          id: doc.id
+        })) as Order[];
+        setOrders(ordersData);
+        setLoading(false);
+      }, (error) => {
+        console.error("Orders listener error:", error);
+      });
+    } else {
+      setOrders([]); // Clear orders if logged out
+      setLoading(false);
     }
-    if (savedInventory) {
-      try {
-        setInventory(JSON.parse(savedInventory));
-      } catch (e) {
-        console.error("Failed to parse inventory", e);
+
+    // 2. Listen to Inventory
+    const inventoryDoc = doc(db, "config", "inventory");
+    const unsubscribeInventory = onSnapshot(inventoryDoc, (snapshot) => {
+      if (snapshot.exists()) {
+        setInventory(snapshot.data() as Inventory);
       }
-    }
-  }, []);
+    });
 
-  // Save to localStorage
-  useEffect(() => {
-    localStorage.setItem("tuel_orders", JSON.stringify(orders));
-  }, [orders]);
+    return () => {
+      unsubscribeOrders();
+      unsubscribeInventory();
+    };
+  }, [user]);
 
-  useEffect(() => {
-    localStorage.setItem("tuel_inventory", JSON.stringify(inventory));
-  }, [inventory]);
-
-  const addOrder = (orderData: Omit<Order, "id" | "createdAt" | "status" | "paymentStatus" | "materials">) => {
+  const addOrder = async (orderData: Omit<Order, "id" | "createdAt" | "status" | "paymentStatus" | "materials">) => {
     const totalPages = orderData.pageCount.bw + orderData.pageCount.color;
     const materials = {
       paperCost: totalPages * inventory.paperCostPerSheet,
       inkCost: totalPages * inventory.inkCostPerPage,
     };
 
-    const newOrder: Order = {
+    const newOrder = {
       ...orderData,
-      id: `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
       status: "pending",
-      paymentStatus: "unpaid",
+      paymentStatus: "unpaid" as const,
       materials,
       createdAt: new Date().toISOString(),
     };
-    setOrders((prev) => [newOrder, ...prev]);
 
-    // Update stock (simplified)
-    setInventory(prev => ({
-      ...prev,
-      paperStock: prev.paperStock - totalPages,
-      inkStock: prev.inkStock - (totalPages * 0.01), // Assumed usage
-    }));
+    const docRef = await addDoc(collection(db, "orders"), newOrder);
+
+    // Update stock
+    const inventoryDoc = doc(db, "config", "inventory");
+    await updateDoc(inventoryDoc, {
+      paperStock: inventory.paperStock - totalPages,
+      inkStock: inventory.inkStock - (totalPages * 0.01), // Assumed usage
+    });
+
+    return docRef.id;
   };
 
-  const updateOrderStatus = (id: string, status: Order["status"]) => {
-    setOrders((prev) =>
-      prev.map((order) => (order.id === id ? { ...order, status } : order))
-    );
+  const updateOrderStatus = async (id: string, status: Order["status"]) => {
+    const orderDoc = doc(db, "orders", id);
+    await updateDoc(orderDoc, { status });
   };
 
-  const updatePaymentStatus = (id: string, paymentStatus: Order["paymentStatus"]) => {
-    setOrders((prev) =>
-      prev.map((order) => (order.id === id ? { ...order, paymentStatus } : order))
-    );
+  const updatePaymentStatus = async (id: string, paymentStatus: Order["paymentStatus"]) => {
+    const orderDoc = doc(db, "orders", id);
+    await updateDoc(orderDoc, { paymentStatus });
   };
 
-  const updateInventory = (newInventory: Partial<Inventory>) => {
-    setInventory(prev => ({ ...prev, ...newInventory }));
+  const updateInventory = async (newInventory: Partial<Inventory>) => {
+    const inventoryDoc = doc(db, "config", "inventory");
+    await updateDoc(inventoryDoc, newInventory);
   };
 
-  const assignVendor = (id: string, vendor: Order["vendor"]) => {
-    setOrders((prev) =>
-      prev.map((order) => (order.id === id ? { ...order, vendor } : order))
-    );
+  const assignVendor = async (id: string, vendor: Order["vendor"]) => {
+    const orderDoc = doc(db, "orders", id);
+    await updateDoc(orderDoc, { vendor });
   };
 
-  const clearOrders = () => {
-    setOrders([]);
-    localStorage.removeItem("tuel_orders");
+  // Clear all orders using a write batch
+  const clearOrders = async () => {
+    try {
+      const { writeBatch, getDocs } = await import("firebase/firestore");
+      const batch = writeBatch(db);
+      const ordersSnapshot = await getDocs(collection(db, "orders"));
+      
+      ordersSnapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+      console.log("Successfully cleared all orders from Firestore.");
+    } catch (error) {
+      console.error("Failed to clear orders:", error);
+      alert("Failed to clear orders. Check console for details.");
+    }
   };
 
   return (
     <OrderContext.Provider value={{ 
       orders, 
       inventory, 
+      loading,
       addOrder, 
       updateOrderStatus, 
       updatePaymentStatus,
@@ -166,3 +216,4 @@ export const useOrders = () => {
   }
   return context;
 };
+

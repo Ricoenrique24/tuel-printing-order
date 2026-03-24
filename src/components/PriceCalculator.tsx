@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useOrders } from "@/context/OrderContext";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { storage } from "@/lib/firebase";
 
 interface PriceCalculatorProps {
   file: File;
@@ -11,10 +13,11 @@ interface PriceCalculatorProps {
 }
 
 const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onReset }) => {
-  const { addOrder } = useOrders();
+  const { addOrder, inventory } = useOrders();
   const [customer, setCustomer] = useState({ name: "", whatsapp: "" });
   const [showCheckout, setShowCheckout] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [options, setOptions] = useState({
     binding: "none",
     cover: "none",
@@ -23,9 +26,8 @@ const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onRe
 
   const [totalPrice, setTotalPrice] = useState(0);
 
+  // Load prices from context instead of constants
   const PRICING = {
-    bw_per_page: 500, // Example IDR
-    color_per_page: 2000,
     binding: {
       none: 0,
       spiral: 15000,
@@ -42,13 +44,21 @@ const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onRe
 
   useEffect(() => {
     let price = 0;
-    price += pageCount.bw * PRICING.bw_per_page;
-    price += pageCount.color * PRICING.color_per_page;
+    const totalPages = pageCount.bw + pageCount.color;
+    const isBulk = totalPages >= inventory.bulkThreshold;
+
+    // Apply bulk or standard pricing
+    const currentPriceBw = isBulk ? inventory.bulkPriceBw : inventory.priceBw;
+    const currentPriceColor = isBulk ? inventory.bulkPriceColor : inventory.priceColor;
+
+    price += pageCount.bw * currentPriceBw;
+    price += pageCount.color * currentPriceColor;
+
     price += PRICING.binding[options.binding as keyof typeof PRICING.binding];
     price += PRICING.cover[options.cover as keyof typeof PRICING.cover];
     if (options.laminating) price += PRICING.laminating;
     setTotalPrice(price);
-  }, [pageCount, options]);
+  }, [pageCount, options, inventory]);
 
   const handleSubmit = async () => {
     if (!customer.name || !customer.whatsapp) {
@@ -57,24 +67,50 @@ const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onRe
     }
 
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    try {
+      // 1. Upload File to Firebase Storage
+      const storageRef = ref(storage, `orders/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
 
-    addOrder({
-      customerName: customer.name,
-      whatsapp: customer.whatsapp,
-      fileName: file.name,
-      fileSize: file.size,
-      pageCount,
-      options,
-      totalPrice,
-      fileUrl: URL.createObjectURL(file), // Temporary URL for this session
-    });
+      const fileUrl = await new Promise<string>((resolve, reject) => {
+        uploadTask.on(
+          "state_changed",
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            setUploadProgress(progress);
+          },
+          (error) => reject(error),
+          async () => {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(downloadURL);
+          }
+        );
+      });
 
-    setIsSubmitting(false);
-    alert("Order submitted successfully! We will contact you via WhatsApp.");
-    onReset();
+      // 2. Add Order to Firestore
+      await addOrder({
+        customerName: customer.name,
+        whatsapp: customer.whatsapp,
+        fileName: file.name,
+        fileSize: file.size,
+        pageCount,
+        options,
+        totalPrice,
+        fileUrl,
+      });
+
+      alert("Order submitted successfully! We will contact you via WhatsApp.");
+      onReset();
+    } catch (error) {
+      console.error("Submission failed:", error);
+      alert("Submission failed. Please check your connection.");
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress(0);
+    }
   };
+
 
   return (
     <div className="premium-card p-8 space-y-6">
@@ -96,11 +132,15 @@ const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onRe
           <div className="space-y-2">
             <div className="flex justify-between p-3 glass rounded-lg">
               <span>B&W Pages ({pageCount.bw})</span>
-              <span className="font-bold">Rp {(pageCount.bw * PRICING.bw_per_page).toLocaleString()}</span>
+              <span className="font-bold">
+                Rp {((pageCount.bw + pageCount.color >= inventory.bulkThreshold ? inventory.bulkPriceBw : inventory.priceBw) * pageCount.bw).toLocaleString()}
+              </span>
             </div>
             <div className="flex justify-between p-3 glass rounded-lg border-l-4 border-l-primary">
               <span>Color Pages ({pageCount.color})</span>
-              <span className="font-bold">Rp {(pageCount.color * PRICING.color_per_page).toLocaleString()}</span>
+              <span className="font-bold">
+                Rp {((pageCount.bw + pageCount.color >= inventory.bulkThreshold ? inventory.bulkPriceColor : inventory.priceColor) * pageCount.color).toLocaleString()}
+              </span>
             </div>
           </div>
         </div>
@@ -200,7 +240,10 @@ const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onRe
             className="w-full bg-foreground text-background py-4 rounded-xl font-black text-lg hover:bg-foreground/90 transition-all flex items-center justify-center space-x-3"
           >
             {isSubmitting ? (
-              <div className="w-6 h-6 border-4 border-background border-t-transparent rounded-full animate-spin" />
+              <div className="flex items-center space-x-3">
+                <div className="w-5 h-5 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm font-bold">{Math.round(uploadProgress)}% Uploading...</span>
+              </div>
             ) : (
               <>
                 <span>Submit Order via WhatsApp</span>
@@ -209,6 +252,7 @@ const PriceCalculator: React.FC<PriceCalculatorProps> = ({ file, pageCount, onRe
                 </svg>
               </>
             )}
+
           </button>
         </div>
       )}

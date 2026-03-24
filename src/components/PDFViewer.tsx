@@ -3,15 +3,14 @@
 import React from "react";
 
 interface PDFViewerProps {
-  file: File | null;
+  url: string | null;
+  fileName?: string;
   isOpen: boolean;
   onClose: () => void;
 }
 
-const PDFViewer: React.FC<PDFViewerProps> = ({ file, isOpen, onClose }) => {
-  if (!isOpen || !file) return null;
-
-  const fileUrl = URL.createObjectURL(file);
+const PDFViewer: React.FC<PDFViewerProps> = ({ url, fileName, isOpen, onClose }) => {
+  if (!isOpen || !url) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
@@ -19,13 +18,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ file, isOpen, onClose }) => {
         <div className="p-4 border-b border-border flex justify-between items-center bg-secondary/30">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-red-500 rounded flex items-center justify-center text-white font-black text-xs">PDF</div>
-            <h3 className="font-bold truncate max-w-md">{file.name}</h3>
+            <h3 className="font-bold truncate max-w-md">{fileName || "Document Preview"}</h3>
           </div>
           <button 
-            onClick={() => {
-              URL.revokeObjectURL(fileUrl);
-              onClose();
-            }}
+            onClick={onClose}
             className="p-2 hover:bg-red-50 hover:text-red-500 rounded-full transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -35,7 +31,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ file, isOpen, onClose }) => {
         </div>
         <div className="flex-1 bg-secondary/10">
           <object
-            data={fileUrl}
+            data={url}
             type="application/pdf"
             className="w-full h-full"
           >
@@ -48,11 +44,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ file, isOpen, onClose }) => {
               <h4 className="text-xl font-bold">Preview not available</h4>
               <p className="text-muted-foreground max-w-sm">Your browser doesn't support direct PDF viewing. You can download the file to view it.</p>
               <a 
-                href={fileUrl} 
-                download={file.name}
+                href={url} 
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn-primary"
               >
-                Download PDF
+                Open PDF in New Tab
               </a>
             </div>
           </object>
@@ -63,3 +60,4 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ file, isOpen, onClose }) => {
 };
 
 export default PDFViewer;
+
